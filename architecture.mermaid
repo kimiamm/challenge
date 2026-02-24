@@ -1,0 +1,53 @@
+flowchart TB
+    User(["👤 کاربر"])
+
+    subgraph CDN ["🌐 CDN آروان‌کلاد"]
+        cdn[("CDN")]
+    end
+
+    subgraph CaaS ["☁️ CaaS - Container as a Service"]
+        blog["📝 Blog App\nNext.js"]
+        prometheus["📊 Prometheus"]
+        grafana["📈 Grafana"]
+    end
+
+    subgraph Servers ["🖥️ سرورهای ابری - دیتاسنتر شهریار"]
+        direction LR
+        server1["Server 1\nNginx + PHP-FPM\nNode Exporter :9100"]
+        server2["Server 2\nNginx + PHP-FPM\nNode Exporter :9100"]
+    end
+
+    subgraph Storage ["💾 سرویس‌های ذخیره‌سازی"]
+        dbaas[("🗄️ DBaaS\nMySQL")]
+        nfs["📁 File Storage\nNFS"]
+        object["🪣 Object Storage\nبک‌آپ لاگ‌ها"]
+    end
+
+    subgraph ELK ["📋 ELK Stack"]
+        elk["Elasticsearch\nLogstash\nKibana"]
+    end
+
+    User -->|HTTPS| cdn
+
+    cdn -->|Load Balance| server1
+    cdn -->|Load Balance| server2
+    cdn -->|ارسال لاگ| elk
+    cdn -->|HTTPS| blog
+
+    server1 <-->|شبکه خصوصی| nfs
+    server2 <-->|شبکه خصوصی| nfs
+
+    server1 -->|Query| dbaas
+    server2 -->|Query| dbaas
+
+    elk -->|Backup| object
+
+    prometheus -->|Scrape :9100| server1
+    prometheus -->|Scrape :9100| server2
+    grafana -->|Query| prometheus
+
+    style CDN fill:#e8f4f8,stroke:#2196F3,color:#000
+    style CaaS fill:#f0f8e8,stroke:#4CAF50,color:#000
+    style Servers fill:#fff8e8,stroke:#FF9800,color:#000
+    style Storage fill:#f8e8f8,stroke:#9C27B0,color:#000
+    style ELK fill:#fef9e7,stroke:#F39C12,color:#000
