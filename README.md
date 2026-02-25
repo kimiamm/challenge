@@ -1,6 +1,6 @@
-# مستندات پروژه ip2loc.ir
+# مستندات انجام چالش
 
-این مستندات، مراحل کامل راه‌اندازی زیرساخت ابری، وب‌سرور، مانیتورینگ و دیپلوی اپلیکیشن را به‌صورت گام‌به‌گام توضیح می‌دهد.
+این مستندات، مراحل کامل راه‌اندازی انجام چالش راه‌اندازی سرور ابری، وب‌سرور، مانیتورینگ و دیپلوی اپلیکیشن را به‌صورت گام‌به‌گام توضیح می‌دهد.
 
 ---
 
@@ -26,7 +26,7 @@
                                     HTTPS
                                        |
                              +---------v----------+
-                             |   CDN آروان‌كلاد    |
+                             |   CDN آروان‌كلاد     |
                              +--+------+-------+--+
                                 |      |       |
                    Load Balance |      | Load  | ارسال لاگ
@@ -36,23 +36,23 @@
               |                            |                      |
               v                            v                      v
 +----------------------------+  +----------------------------+  +-----------------------+
-|         Server 1           |  |         Server 2           |  |       ELK Stack        |
+|         Server 1           |  |         Server 2           |  |       ELK Stack       |
 |   Nginx + PHP-FPM          |  |   Nginx + PHP-FPM          |  |  Elasticsearch        |
 |   Node Exporter :9100      |  |   Node Exporter :9100      |  |  Logstash             |
 +-----+------------+---------+  +----+------------+----------+  |  Kibana               |
       |            |                 |            |              +-----------+-----------+
-      |  شبکه      |                 |  شبکه      |                          |
-      |  خصوصی     |                 |  خصوصی     |                          | Backup
+      |  شبکه    |                 |.     شبکه    |                          |
+      |  خصوصی    |.                |     خصوصی   |                          | Backup
       v            v                 v            v                          v
 +----------+  +---------+  +----------+  +---------+             +---------------------+
 |   NFS    |  |  DBaaS  |  |   NFS    |  |  DBaaS  |             |   Object Storage    |
-|   File   |  |  MySQL  |  |   File   |  |  MySQL  |             |  (بك‌آپ لاگ‌ها)      |
+|   File   |  |  MySQL  |  |   File   |  |  MySQL  |             |  (بك‌آپ لاگ‌ها)        |
 | Storage  |  |         |  | Storage  |  |         |             +---------------------+
 +----------+  +---------+  +----------+  +---------+
 
 
  +------------------------------------------------------------------+
- |                     CaaS آروان‌كلاد                               |
+ |                     CaaS آروان‌كلاد                                |
  |                                                                  |
  |   +------------------+        +----------------------------+     |
  |   |   Blog App       |        |        Prometheus          |     |
@@ -63,98 +63,71 @@
  |          |                                  |                    |
  |       HTTPS                              Query                   |
  |       از CDN                                |                    |
- |                                            v                    |
- |                                  +------------------+           |
- |                                  |     Grafana      |           |
- |                                  |    Dashboard     |           |
- |                                  +------------------+           |
+ |                                            v                     |
+ |                                  +------------------+            |
+ |                                  |     Grafana      |            |
+ |                                  |    Dashboard     |            |
+ |                                  +------------------+            |
  +------------------------------------------------------------------+
 ```
 
 ---
 
-## ۱. ساخت سرورهای ابری
+## ۱. ایجاد سرورهای ابری
 
-در ابتدا دو سرور ابری (Cloud Instance) در دیتاسنتر **شهریار** آروان‌کلاد ساخته شدند. این سرورها پایه‌ی کل زیرساخت پروژه هستند؛ یکی برای سرو وب‌سایت و دیگری برای سرویس‌های جانبی.
+ابتدا دو سرور ابری در دیتاسنتر **شهریار** از آروان‌کلاد ساخته شد. این دو سرور پایه‌ی کل زیرساخت پروژه هستند:
+هدف از ایجاد دو سرور مختلف HA بودن معماری است.
 
 ---
 
-## ۲. راه‌اندازی شبکه خصوصی و NFS
+## ۲. شبکه خصوصی و NFS
 
 ### شبکه خصوصی چیست؟
 
-شبکه خصوصی (Private Network) یک شبکه‌ی داخلی است که فقط سرورهای داخل آن می‌توانند با هم ارتباط برقرار کنند و از اینترنت عمومی قابل دسترسی نیست. این باعث می‌شود انتقال داده بین سرورها امن‌تر و سریع‌تر باشد.
+شبکه خصوصی (Private Network) یک شبکه داخلی است که فقط سرورهای داخل آن می‌توانند با هم ارتباط برقرار کنند و از اینترنت عمومی قابل دسترسی نیست. این کار باعث می‌شود انتقال داده بین سرورها **امن‌تر و سریع‌تر** انجام شود.
 
-- **ساب‌نت:** `192.168.1.0/24` یعنی آدرس‌های IP از `192.168.1.1` تا `192.168.1.254` در این شبکه قرار دارند.
-- **DHCP:** پروتکلی که به‌صورت خودکار به هر سرور یک IP اختصاص می‌دهد، بدون اینکه نیاز باشد دستی تنظیم کنید.
+* **ساب‌نت:** `192.168.1.0/24` → آدرس‌های IP از `192.168.1.1` تا `192.168.1.254`
+* **DHCP:** پروتکلی که به هر سرور به‌صورت خودکار یک IP اختصاص می‌دهد.
 
 ### NFS چیست؟
 
-NFS مخفف **Network File System** است. یک پروتکل است که به شما اجازه می‌دهد یک فولدر روی یک سرور را روی سرور دیگری **mount** کنید (یعنی به آن وصل شوید) و انگار که آن فولدر روی خود سرور دوم است باهاش کار کنید. مثل اینکه یک هارد اکسترنال را به چند کامپیوتر همزمان وصل کنید.
+NFS یا **Network File System** به شما امکان می‌دهد یک فولدر روی یک سرور را روی سرور دیگر **mount** کنید؛ یعنی انگار آن فولدر روی خود سرور دوم است.
 
-در اینجا یک **File Storage** از پنل آروان‌کلاد ساخته شد و از طریق NFS به سرورها متصل شد تا فایل‌های وردپرس روی آن ذخیره شوند.
+در این پروژه، یک **File Storage** از پنل آروان‌کلاد ساخته شد و از طریق NFS به سرورها متصل شد تا فایل‌های وردپرس روی آن ذخیره شوند.
 
-### نصب کلاینت NFS
+### مراحل پیاده‌سازی NFS
+
+1. **نصب کلاینت NFS**
 
 ```bash
 sudo apt-get install nfs-common
 ```
 
-این دستور پکیج `nfs-common` را نصب می‌کند. این پکیج شامل ابزارهایی است که سرور لینوکس برای **وصل شدن** (mount کردن) به یک سرور NFS به آن نیاز دارد. بدون این پکیج، سیستم‌عامل نمی‌داند چطور با پروتکل NFS ارتباط برقرار کند.
-
-### ساخت فولدر mount
+2. **ساخت فولدر mount**
 
 ```bash
 sudo mkdir /mnt/arvanfs
 ```
 
-این دستور یک فولدر خالی به نام `arvanfs` در مسیر `/mnt` می‌سازد. `/mnt` در لینوکس معمولاً محلی است که دیوایس‌ها و فضاهای ذخیره‌سازی خارجی به آن متصل می‌شوند. این فولدر نقطه‌ی اتصال (mount point) ما خواهد بود.
-
-### تغییر مالکیت فولدر
+3. **تغییر مالکیت فولدر**
 
 ```bash
 sudo chown -R www-data:www-data /mnt/arvanfs
 ```
 
-- **`chown`**: مخفف **Change Ownership** است و مالک یک فایل یا فولدر را تغییر می‌دهد.
-- **`-R`**: مخفف **Recursive** است؛ یعنی تغییر را روی فولدر و تمام محتویات داخلش اعمال کن.
-- **`www-data:www-data`**: یوزر و گروه `www-data`. در اوبونتو، سرویس Nginx با این یوزر اجرا می‌شود. اگر Nginx با یوزر `www-data` کار کند اما مالک فولدر کس دیگری باشد، Nginx نمی‌تواند فایل‌ها را بخواند یا بنویسد.
-- **`/mnt/arvanfs`**: مسیر فولدری که مالکیتش را تغییر می‌دهیم.
-
-### Mount کردن فضای NFS
+4. **Mount کردن فضای NFS**
 
 ```bash
-sudo mount -t nfs "192.168.1.3:/volumes/_nogroup/10416600-8423-4a3f-9afc-b07d8dfe38d2/b6cd7b74-2cfd-4f25-9072-7881887bed2e" /mnt/arvanfs
+sudo mount -t nfs "192.168.1.3:/volumes/.../b6cd7b74-2cfd-4f25-9072-7881887bed2e" /mnt/arvanfs
 ```
 
-- **`mount`**: دستوری است که یک دیوایس یا فضای ذخیره‌سازی را به سیستم‌عامل متصل می‌کند.
-- **`-t nfs`**: نوع فایل‌سیستم را مشخص می‌کند. اینجا به سیستم می‌گوییم این یک NFS است.
-- **`"192.168.1.3:/volumes/..."`**: آدرس سرور NFS (IP داخلی شبکه خصوصی) و مسیر فولدر روی آن سرور. این مسیر طولانی، آدرس دقیق volume ساخته‌شده در آروان‌کلاد است.
-- **`/mnt/arvanfs`**: مسیر محلی که می‌خواهیم NFS به آن متصل شود (همان فولدری که ساختیم).
-
-### پرزیست کردن Mount در `/etc/fstab`
-
-بعد از ریبوت، تمام mount‌های دستی پاک می‌شوند. برای اینکه بعد از هر بار خاموش و روشن شدن سرور، NFS دوباره به‌صورت خودکار mount شود، باید آن را به فایل `/etc/fstab` اضافه کنیم.
+5. **اضافه کردن Mount به `/etc/fstab`**
 
 ```bash
-sudo nano /etc/fstab
+192.168.1.3:/volumes/.../b6cd7b74-2cfd-4f25-9072-7881887bed2e /mnt/arvanfs nfs4 rw,soft 0 0
 ```
 
-این دستور فایل `/etc/fstab` را با ویرایشگر متنی `nano` باز می‌کند. `fstab` مخفف **File System Table** است و لیستی از تمام فضاهای ذخیره‌سازی‌ای است که باید هنگام بوت سیستم mount شوند.
-
-خط زیر به انتهای این فایل اضافه شد:
-
-```
-192.168.1.3:/volumes/_nogroup/10416600-8423-4a3f-9afc-b07d8dfe38d2/b6cd7b74-2cfd-4f25-9072-7881887bed2e /mnt/arvanfs nfs4 rw,soft 0 0
-```
-
-توضیح هر بخش:
-- **`192.168.1.3:/volumes/...`**: آدرس منبع NFS
-- **`/mnt/arvanfs`**: مقصد (mount point)
-- **`nfs4`**: نسخه‌ی پروتکل NFS (نسخه ۴)
-- **`rw`**: مخفف **Read-Write**؛ یعنی هم خواندن هم نوشتن مجاز است.
-- **`soft`**: اگر سرور NFS در دسترس نبود، عملیات با خطا پایان یابد (به جای اینکه سیستم هنگ کند).
-- **`0 0`**: مقادیر مربوط به backup و بررسی فایل‌سیستم که هر دو غیرفعال هستند.
+> این کار باعث می‌شود بعد از هر ریبوت، NFS به‌صورت خودکار متصل شود.
 
 ---
 
@@ -162,32 +135,30 @@ sudo nano /etc/fstab
 
 ### Nginx چیست؟
 
-Nginx (تلفظ: «انجین‌ایکس») یک **وب‌سرور** قدرتمند است. وظیفه‌اش این است که وقتی کاربری آدرس سایت شما را در مرورگر وارد می‌کند، درخواست را دریافت کرده و فایل‌های مناسب را برگرداند. Nginx به‌خودی‌خود PHP را اجرا نمی‌کند، به همین دلیل به PHP-FPM نیاز داریم.
+Nginx یک **وب‌سرور قدرتمند** است که درخواست‌های کاربران را دریافت و فایل‌های مناسب را برمی‌گرداند. برای اجرای PHP به **PHP-FPM** نیاز دارد.
 
 ### PHP-FPM چیست؟
 
-PHP-FPM مخفف **PHP FastCGI Process Manager** است. این یک سرویس است که کدهای PHP را اجرا می‌کند. وقتی مرورگر یک فایل `.php` درخواست می‌کند، Nginx آن درخواست را به PHP-FPM می‌فرستد، PHP-FPM کد را اجرا می‌کند و نتیجه (HTML) را به Nginx برمی‌گرداند.
+PHP-FPM یا **PHP FastCGI Process Manager** کدهای PHP را اجرا می‌کند و نتایج را به Nginx بازمی‌گرداند.
 
-### نصب Nginx، PHP-FPM و افزونه‌ها
+### نصب پکیج‌ها
 
 ```bash
 sudo apt install nginx php-fpm php-mysql php-cli php-curl php-gd php-mbstring php-xml php-zip unzip
 ```
 
-این دستور تمام پکیج‌های مورد نیاز را نصب می‌کند:
-
-| پکیج | کاربرد |
-|---|---|
-| `nginx` | وب‌سرور |
-| `php-fpm` | اجراکننده کدهای PHP |
-| `php-mysql` | اتصال PHP به پایگاه داده MySQL |
-| `php-cli` | اجرای PHP از طریق خط فرمان |
-| `php-curl` | ارسال و دریافت درخواست‌های HTTP از داخل PHP |
-| `php-gd` | پردازش تصویر در PHP (نیاز وردپرس) |
-| `php-mbstring` | پشتیبانی از کاراکترهای چندبایتی مثل فارسی |
-| `php-xml` | پردازش XML در PHP |
-| `php-zip` | کار با فایل‌های فشرده ZIP در PHP |
-| `unzip` | ابزار خط‌فرمان برای استخراج فایل‌های zip |
+| پکیج         | کاربرد                          |
+| ------------ | ------------------------------- |
+| nginx        | وب‌سرور                         |
+| php-fpm      | اجرای کدهای PHP                 |
+| php-mysql    | اتصال به MySQL                  |
+| php-cli      | اجرای PHP از خط فرمان           |
+| php-curl     | ارسال/دریافت درخواست HTTP       |
+| php-gd       | پردازش تصویر                    |
+| php-mbstring | پشتیبانی از کاراکترهای چندبایتی |
+| php-xml      | پردازش XML                      |
+| php-zip      | کار با ZIP                      |
+| unzip        | استخراج فایل ZIP                |
 
 ### بررسی وضعیت PHP-FPM
 
@@ -195,19 +166,7 @@ sudo apt install nginx php-fpm php-mysql php-cli php-curl php-gd php-mbstring ph
 systemctl status php8.1-fpm
 ```
 
-- **`systemctl`**: ابزار مدیریت سرویس‌ها در لینوکس (systemd).
-- **`status`**: وضعیت یک سرویس را نشان می‌دهد؛ آیا در حال اجراست؟ آخرین خطاها چه بودند؟
-- **`php8.1-fpm`**: نام سرویس PHP-FPM نسخه ۸.۱
-
-خروجی این دستور باید نشان دهد که سرویس `active (running)` است.
-
 ### پیکربندی PHP-FPM Pool
-
-```bash
-sudo nano /etc/php/8.1/fpm/pool.d/www.conf
-```
-
-این فایل تنظیمات **Pool** مربوط به PHP-FPM را نگه می‌دارد. Pool یعنی گروهی از پروسس‌های PHP که برای پاسخ به درخواست‌ها آماده‌اند.
 
 ```ini
 pm = dynamic
@@ -217,19 +176,7 @@ pm.min_spare_servers = 2
 pm.max_spare_servers = 6
 ```
 
-| تنظیم | توضیح |
-|---|---|
-| `pm = dynamic` | تعداد پروسس‌ها به‌صورت پویا (Dynamic) تنظیم می‌شود؛ یعنی بر اساس بار سرور، پروسس اضافه یا کم می‌شود. |
-| `pm.max_children = 20` | حداکثر ۲۰ پروسس PHP می‌تواند همزمان اجرا شود. |
-| `pm.start_servers = 4` | هنگام شروع سرویس، ۴ پروسس آماده به کار راه‌اندازی می‌شود. |
-| `pm.min_spare_servers = 2` | همیشه حداقل ۲ پروسس بیکار (spare) باید در انتظار درخواست باشند. |
-| `pm.max_spare_servers = 6` | حداکثر ۶ پروسس بیکار مجاز است؛ بیشتر از آن کشته می‌شوند تا حافظه آزاد شود. |
-
-### پیکربندی OPcache در php.ini
-
-```bash
-sudo nano /etc/php/8.1/fpm/php.ini
-```
+### فعال‌سازی OPcache
 
 ```ini
 opcache.enable=1
@@ -238,32 +185,13 @@ opcache.max_accelerated_files=10000
 opcache.revalidate_freq=2
 ```
 
-**OPcache** یک سیستم کش برای PHP است. وقتی یک فایل PHP برای اولین بار اجرا می‌شود، PHP آن را به **کد ماشین** (bytecode) تبدیل می‌کند. OPcache این bytecode را در حافظه RAM نگه می‌دارد تا دفعات بعد نیازی به ترجمه مجدد نباشد. نتیجه: سرعت اجرای PHP به‌شدت افزایش پیدا می‌کند.
+> OPcache سرعت اجرای PHP را با ذخیره bytecode فایل‌ها در حافظه RAM افزایش می‌دهد.
 
-| تنظیم | توضیح |
-|---|---|
-| `opcache.enable=1` | OPcache را فعال می‌کند. |
-| `opcache.memory_consumption=128` | ۱۲۸ مگابایت RAM برای ذخیره bytecodeها اختصاص می‌دهد. |
-| `opcache.max_accelerated_files=10000` | حداکثر ۱۰۰۰۰ فایل PHP می‌توانند در کش باشند. |
-| `opcache.revalidate_freq=2` | هر ۲ ثانیه یک‌بار بررسی می‌کند که آیا فایل‌های PHP تغییر کرده‌اند یا نه. |
-
-### افزودن FastCGI Cache به nginx.conf
-
-```bash
-sudo nano /etc/nginx/nginx.conf
-```
-
-خط زیر اضافه شد:
+### افزودن FastCGI Cache به Nginx
 
 ```nginx
 fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=WORDPRESS:100m inactive=60m;
 ```
-
-- **`fastcgi_cache_path`**: مسیر ذخیره‌سازی کش FastCGI را مشخص می‌کند.
-- **`/var/cache/nginx`**: فولدری که فایل‌های کش در آن ذخیره می‌شوند.
-- **`levels=1:2`**: ساختار زیرپوشه برای ذخیره‌سازی فایل‌های کش (برای جلوگیری از ایجاد خیلی فایل در یک فولدر).
-- **`keys_zone=WORDPRESS:100m`**: یک ناحیه کش به نام `WORDPRESS` با ۱۰۰ مگابایت فضا در RAM تعریف می‌کند که کلیدهای کش در آن نگهداری می‌شوند.
-- **`inactive=60m`**: اگر یک آیتم کش تا ۶۰ دقیقه استفاده نشد، حذف می‌شود.
 
 ---
 
@@ -271,50 +199,32 @@ fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=WORDPRESS:100m inactive
 
 ### SSL چیست؟
 
-SSL (یا TLS) پروتکلی است که ارتباط بین مرورگر کاربر و سرور شما را **رمزنگاری** می‌کند. وقتی سایت شما گواهی SSL داشته باشد، آدرس آن با `https://` شروع می‌شود و مرورگر آیکون قفل را نشان می‌دهد.
+SSL ارتباط مرورگر و سرور را **رمزنگاری** می‌کند و باعث می‌شود سایت شما با `https://` قابل دسترسی باشد.
 
 ### Certbot چیست؟
 
-Certbot یک ابزار رایگان از **Let's Encrypt** است که به‌صورت خودکار گواهی SSL معتبر برای دامنه شما صادر می‌کند.
+Certbot ابزار رایگان **Lets Encrypt** است که به‌صورت خودکار گواهی SSL معتبر صادر می‌کند.
 
-### نصب Certbot
+### نصب و دریافت گواهی
 
 ```bash
 sudo apt install certbot python3-certbot-nginx
-```
-
-- **`certbot`**: ابزار اصلی دریافت گواهی SSL.
-- **`python3-certbot-nginx`**: پلاگین Certbot برای Nginx که می‌تواند به‌صورت خودکار تنظیمات Nginx را برای SSL ویرایش کند.
-
-### دریافت گواهی Wildcard
-
-```bash
 certbot -d *.ip2loc.ir --manual --preferred-challenges dns certonly
 ```
 
-- **`-d *.ip2loc.ir`**: دامنه‌ای که می‌خواهیم برایش گواهی بگیریم. علامت `*` (wildcard) یعنی این گواهی برای تمام ساب‌دامنه‌ها مثل `www.ip2loc.ir`، `api.ip2loc.ir` و... معتبر است.
-- **`--manual`**: فرایند تأیید دامنه را به‌صورت دستی انجام می‌دهیم (Certbot دستورالعمل می‌دهد و ما آن را اجرا می‌کنیم).
-- **`--preferred-challenges dns`**: روش تأیید مالکیت دامنه را DNS انتخاب می‌کند. Certbot یک رکورد DNS خاص می‌خواهد که به پنل DNS دامنه‌تان اضافه کنید تا ثابت شود مالک دامنه هستید. (برای wildcard certificate این روش اجباری است.)
-- **`certonly`**: فقط گواهی را دریافت کن و تنظیمات Nginx را دست نزن (ما خودمان تنظیم می‌کنیم).
+> گواهی wildcard برای تمام ساب‌دامنه‌ها معتبر است.
 
 ---
 
 ## ۵. پیکربندی Nginx برای دامنه
 
-فایل کانفیگ دامنه در مسیر `/etc/nginx/conf.d/` ساخته شد:
-
 ```nginx
 server {
     listen 80;
     server_name ip2loc.ir;
-
     return 301 https://$host$request_uri;
 }
-```
 
-این بلاک اول، هر درخواست HTTP (پورت ۸۰) را با **Redirect 301** به HTTPS هدایت می‌کند. کد ۳۰۱ یعنی این Redirect دائمی است (مرورگرها آن را کش می‌کنند).
-
-```nginx
 server {
     listen 443 ssl http2;
     server_name ip2loc.ir;
@@ -322,12 +232,8 @@ server {
     root /mnt/arvanfs/wordpress;
     index index.php index.html;
 
-    client_max_body_size 64M;
-
     ssl_certificate /etc/letsencrypt/live/ip2loc.ir/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/ip2loc.ir/privkey.pem;
-
-    add_header Strict-Transport-Security "max-age=31536000" always;
 
     location / {
         try_files $uri $uri/ /index.php?$args;
@@ -336,212 +242,40 @@ server {
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php8.1-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 30d;
-        access_log off;
     }
 }
 ```
 
-توضیح هر بخش:
+سپس وارد دایکتوری که به عنوان root مشخص شده میشویم و با استفاده از wget فایل وردپرس را دانلود و unzip میکنیم : 
 
-| دستور | توضیح |
-|---|---|
-| `listen 443 ssl http2` | روی پورت ۴۴۳ (HTTPS) گوش بده و از پروتکل HTTP/2 استفاده کن. |
-| `root /mnt/arvanfs/wordpress` | فایل‌های سایت در این مسیر (روی NFS) قرار دارند. |
-| `index index.php index.html` | اگر آدرس فولدر بود، اول `index.php` و بعد `index.html` را امتحان کن. |
-| `client_max_body_size 64M` | حداکثر حجم فایل آپلودی ۶۴ مگابایت است (مهم برای آپلود تصویر در وردپرس). |
-| `ssl_certificate` | مسیر فایل گواهی SSL. |
-| `ssl_certificate_key` | مسیر کلید خصوصی SSL. |
-| `Strict-Transport-Security` | هدر HSTS؛ به مرورگر می‌گوید این سایت را برای یک سال (`31536000` ثانیه) همیشه با HTTPS باز کن. |
-| `try_files $uri $uri/ /index.php?$args` | ابتدا فایل درخواست‌شده را جستجو کن، اگر نبود فولدر را امتحان کن، اگر آن هم نبود به `index.php` پاس بده (این برای روتینگ وردپرس ضروری است). |
-| `fastcgi_pass unix:/run/php/php8.1-fpm.sock` | درخواست‌های PHP را از طریق Unix Socket به PHP-FPM بفرست. |
-| `expires 30d` | فایل‌های استاتیک (JS، CSS، تصاویر) را برای ۳۰ روز در مرورگر کاربر کش کن. |
-| `access_log off` | لاگ دسترسی برای فایل‌های استاتیک غیرفعال شود تا فایل لاگ بی‌جهت بزرگ نشود. |
-
----
-
-## ۶. مانیتورینگ
-
-برای اینکه بدانیم سرورها در چه وضعیتی هستند (CPU، RAM، دیسک، شبکه)، از سه ابزار در کنار هم استفاده کردیم:
-
-### Node Exporter چیست؟
-
-**Node Exporter** یک برنامه‌ی سبک است که روی هر سرور نصب می‌شود و اطلاعات سخت‌افزاری آن سرور (مصرف CPU، RAM، دیسک، شبکه و...) را جمع‌آوری کرده و از طریق HTTP (معمولاً پورت `9100`) در اختیار می‌گذارد. به آن مثل یک **سنسور** فکر کنید که دائماً وضعیت سرور را اندازه می‌گیرد.
-
-### Prometheus چیست؟
-
-**Prometheus** یک سیستم **مانیتورینگ و جمع‌آوری داده** است. این سیستم به‌صورت منظم (مثلاً هر ۱۵ ثانیه) به Node Exporterهای نصب‌شده روی سرورها مراجعه می‌کند، داده‌ها را می‌خواند و در پایگاه داده‌ی خودش ذخیره می‌کند. به آن مثل یک **دفترچه ثبت اطلاعات** فکر کنید که هر چند ثانیه یک‌بار وضعیت همه سنسورها را می‌نویسد.
-
-### Grafana چیست؟
-
-**Grafana** یک ابزار **داشبورد و ویژوالیزیشن** است. داده‌هایی که Prometheus جمع‌آوری کرده را می‌خواند و آن‌ها را به‌صورت نمودارهای زیبا و قابل فهم نمایش می‌دهد. به آن مثل یک **صفحه کنترل** با نمودار و گراف فکر کنید که یک نگاه کافی است تا بفهمید همه چیز درست است یا نه.
-
-**جمع‌بندی:**
-```
-سرور ۱ --> [Node Exporter] --> (port 9100)
-سرور ۲ --> [Node Exporter] --> (port 9100)
-                                    |
-                              [Prometheus] -- هر ۱۵ ثانیه داده می‌کشد
-                                    |
-                              [Grafana] -- نمودار نشان می‌دهد
+```bash
+wget https://fa.wordpress.org/latest-fa_IR.zip
+unzip latest-fa_IR.zip
 ```
 
 ---
 
-### نصب Node Exporter روی هر دو سرور
+## ۶. مانیتورینگ سرورها
 
-**ساخت یوزر اختصاصی:**
+### ابزارها
 
-```bash
-sudo useradd --no-create-home --shell /bin/false node_exporter
+* **Node Exporter:** جمع‌آوری اطلاعات سخت‌افزاری سرور
+* **Prometheus:** ذخیره و پایش داده‌ها
+* **Grafana:** نمایش داده‌ها در داشبورد گرافیکی
+
+### معماری
+
 ```
-
-- **`useradd`**: یک یوزر جدید در سیستم می‌سازد.
-- **`--no-create-home`**: برای این یوزر فولدر home نساز (چون به آن نیازی نداریم).
-- **`--shell /bin/false`**: این یوزر نمی‌تواند وارد سیستم (login) شود. یک اقدام امنیتی است تا اگر کسی به نام این یوزر وارد شد، هیچ دسترسی نداشته باشد.
-- **`node_exporter`**: نام یوزر.
-
-**استخراج فایل‌های Node Exporter:**
-
-```bash
-tar -xzf node_exporter.tar.gz
+سرور ۱/۲ --> Node Exporter --> Prometheus --> Grafana
 ```
-
-- **`tar`**: ابزار کار با فایل‌های آرشیو در لینوکس.
-- **`-x`**: عملیات استخراج (extract) را انجام بده.
-- **`-z`**: فایل با gzip فشرده شده، آن را ابتدا از حالت فشرده خارج کن.
-- **`-f`**: نام فایل آرشیو را مشخص می‌کند که اینجا `node_exporter.tar.gz` است.
-
-**ساخت فایل سرویس systemd:**
-
-```bash
-sudo nano /etc/systemd/system/node_exporter.service
-```
-
-```ini
-[Unit]
-Description=Node Exporter
-After=network.target
-
-[Service]
-User=node_exporter
-Group=node_exporter
-Type=simple
-ExecStart=/usr/local/bin/node_exporter
-
-[Install]
-WantedBy=multi-user.target
-```
-
-این فایل به **systemd** (سیستم مدیریت سرویس لینوکس) توضیح می‌دهد که Node Exporter چیست و چطور اجرا شود:
-
-| بخش | توضیح |
-|---|---|
-| `Description` | توضیح مختصر سرویس |
-| `After=network.target` | این سرویس را بعد از راه‌اندازی شبکه شروع کن |
-| `User=node_exporter` | سرویس با یوزر `node_exporter` اجرا شود |
-| `Group=node_exporter` | گروه اجرایی سرویس |
-| `Type=simple` | این یک سرویس ساده است که یک پروسس راه‌اندازی می‌کند |
-| `ExecStart=...` | دستور شروع سرویس |
-| `WantedBy=multi-user.target` | این سرویس در حالت چند‌کاربره سیستم (حالت نرمال) فعال باشد |
-
-**فعال‌سازی و اجرای سرویس:**
-
-```bash
-sudo systemctl daemon-reload
-```
-
-بعد از تغییر یا افزودن فایل‌های `.service`، باید به systemd بگوییم که تغییرات را دوباره بخواند. این دستور آن کار را می‌کند.
-
-```bash
-sudo systemctl enable node_exporter
-```
-
-سرویس Node Exporter را فعال می‌کند تا **بعد از هر بار ریبوت سرور** به‌صورت خودکار شروع به کار کند.
-
-```bash
-sudo systemctl start node_exporter
-```
-
-سرویس Node Exporter را **همین الان** شروع به کار می‌کند (بدون نیاز به ریبوت).
 
 ---
 
-### پیکربندی Prometheus
+## ۷. فایروال
 
-یک سرور Prometheus از پنل آروان‌کلاد راه‌اندازی شد و یک volume اضافه شد تا داده‌ها بعد از ریبوت از بین نروند.
-
-فایل کانفیگ `/etc/prometheus/prometheus.yml`:
-
-```yaml
-global:
-  scrape_interval: 15s
-  scrape_timeout: 10s
-  evaluation_interval: 15s
-
-scrape_configs:
-  - job_name: "prometheus"
-    static_configs:
-      - targets: ["localhost:9090"]
-
-  - job_name: "node"
-    static_configs:
-      - targets: ["188.121.111.164:9100"]
-        labels:
-          role: "server-1"
-
-      - targets: ["37.32.4.218:9100"]
-        labels:
-          role: "server-2"
-```
-
-| تنظیم | توضیح |
-|---|---|
-| `scrape_interval: 15s` | هر ۱۵ ثانیه داده جمع‌آوری کن |
-| `scrape_timeout: 10s` | اگر بعد از ۱۰ ثانیه جوابی نیامد، عملیات را با خطا متوقف کن |
-| `evaluation_interval: 15s` | هر ۱۵ ثانیه قوانین (rules) را ارزیابی کن |
-| `job_name: "node"` | نام این گروه از هدف‌ها |
-| `targets` | لیست سرورهایی که Node Exporter روی آن‌ها نصب است (IP:Port) |
-| `labels` | برچسب‌هایی برای تشخیص سرورها از هم در Grafana |
-
----
-
-### راه‌اندازی Grafana
-
-Grafana از طریق پنل آروان‌کلاد نصب شد. سپس:
-
-1. **اضافه کردن Prometheus به عنوان Data Source**: در تنظیمات Grafana، آدرس سرور Prometheus را وارد کردیم تا Grafana بتواند از آن داده بخواند.
-
-2. **ایمپورت داشبورد**: به بخش **Dashboards → Import** رفته و ID شماره **1860** را وارد کردیم.
-
-   داشبورد ۱۸۶۰ یک داشبورد آماده و معروف به نام **Node Exporter Full** است که صدها گراف آماده برای نمایش وضعیت سرور دارد و نیازی به ساخت از صفر نیست.
-
----
-
-## ۷. پیکربندی فایروال
-
-برای امنیت بیشتر، یک گروه فایروالی (Security Group) در پنل آروان‌کلاد ساخته شد. قوانین زیر اعمال شدند:
-
-**Whitelist کردن IP‌های CDN آروان‌کلاد (برای HTTPS):**
-
-تنها ترافیک ورودی HTTP/HTTPS از IP‌های CDN آروان مجاز است. CDN فعلاً از پروتکل QUIC (UDP) بین PoP و سرور پشتیبانی نمی‌کند، پس فقط TCP وایت‌لیست شد.
-
-| رنج IP | Zone |
-|---|---|
-| `128.0.105.0/24` | Bamdad |
-| `94.101.188.0/24` | Simin |
-| `94.101.189.0/24` | Forough |
-
-**Whitelist کردن IP‌های خروجی کانتینر Prometheus برای پورت 9100:**
-
-تا Prometheus بتواند به Node Exporterهای روی سرورها دسترسی داشته باشد، IP‌های خروجی سرویس CaaS آروان‌کلاد برای پورت `9100` وایت‌لیست شدند.
-
----
+* **وایت‌لیست CDN آروان‌کلاد:** محدود کردن ترافیک ورودی به آیپی های CDN
+* **وایت‌لیست IP Prometheus:** دسترسی به Node Exporter روی پورت 9100
+* **وایت‌لیست IP های سرور های ارسال لاگ CDN:** دسترسی به logstashروی پورت 5140
 
 ## ۸. داکرایز کردن پروژه Next.js
 
@@ -676,45 +410,264 @@ docker push registry-8595781cfa-astroadre.apps.ir-central1.arvancaas.ir/kimblog:
 
 از طریق پنل آروان‌کلاد، اپلیکیشن با استفاده از ایمیج push شده روی CaaS ساخته شد و دامنه به آن اضافه گردید.
 
----
-
-## جمع‌بندی معماری
-
-```
-کاربر
-  |
-  | (HTTPS)
-  v
-[CDN آروان‌کلاد]
-  |
-  | (TCP - فقط IP های وایت‌لیست شده)
-  v
-[Nginx روی سرور ۱]
-  |
-  | (FastCGI)
-  v
-[PHP-FPM]     [NFS - فایل‌های وردپرس]
-  |                    |
-  +--------------------+
-         |
-         v
-   [شبکه خصوصی - 192.168.1.0/24]
-         |
-         v
-[سرور ۲ - Prometheus + Grafana]
-  |
-  | (scrape - port 9100)
-  v
-[Node Exporter روی هر دو سرور]
-
-
-[CaaS آروان‌کلاد]
-  |
-  | (Container Registry)
-  v
-[اپلیکیشن Next.js - دیپلوی شده]
-```
+عالی، می‌توانیم بخش ELK را دقیق و مرحله‌به‌مرحله به سبک قبلی به متن اضافه کنیم، با توضیح کامل هر سرویس، کانفیگ و بکاپ، بدون اینکه چیزی خلاصه شود. نسخه بازنویسی‌شده:
 
 ---
 
-> **نکته:** سرویس ELK Stack (Elasticsearch, Logstash, Kibana) برای مدیریت لاگ‌ها هنوز اضافه نشده و در مراحل آینده به زیرساخت اضافه خواهد شد.
+## ۱۰. راه‌اندازی ELK Stack (Elasticsearch, Logstash, Kibana)
+
+برای جمع‌آوری، پردازش و نمایش لاگ‌ها از **ELK Stack** استفاده شد. این مجموعه شامل سه سرویس است:
+
+* **Elasticsearch:** پایگاه داده‌ی لاگ‌ها و موتور جستجو
+* **Logstash:** پردازش و تبدیل لاگ‌ها
+* **Kibana:** داشبورد و ویژوالیزیشن داده‌ها
+
+### ۱۰.۱ فایل `docker-compose.yml`
+
+```yaml
+version: '3'
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=Kimi@123
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    volumes:
+      - ./elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    healthcheck:
+      test: ["CMD-SHELL", "curl -u elastic:Kimi@123 -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+    networks:
+      - monitoring-stack-net
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.0
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    ports:
+      - 5140:5140/tcp
+      - 5140:5140/udp
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats/pipelines || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+    networks:
+      - monitoring-stack-net
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    container_name: kibana
+    ports:
+      - 5601:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=Kimi@123
+      - SERVER_PUBLICBASEURL=https://kibana.ip2loc.ir
+    healthcheck:
+      test: ["CMD-SHELL", "curl -u elastic:Kimi@123 -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+    networks:
+      - monitoring-stack-net
+    depends_on:
+      - elasticsearch
+
+networks:
+  monitoring-stack-net:
+    driver: bridge
+```
+
+**توضیح سرویس‌ها:**
+
+* **Elasticsearch:**
+
+  * یک **single-node cluster** راه‌اندازی می‌کند
+  * رمز عبور و گزینه‌های Java برای مدیریت حافظه تعیین شده‌اند
+  * داده‌ها روی فولدر `./elasticsearch-data` ذخیره می‌شوند تا بعد از ریبوت از بین نروند
+
+* **Logstash:**
+
+  * دریافت و پردازش لاگ‌ها از TCP/UDP پورت 5140
+  * فایل‌های pipeline و کانفیگ از فولدرهای محلی mount شده‌اند
+  * وابسته به Elasticsearch است (`depends_on`)
+
+* **Kibana:**
+
+  * داشبورد گرافیکی برای مشاهده لاگ‌ها
+  * به Elasticsearch متصل می‌شود و از HTTPS قابل دسترسی است
+  * بعد از استارت Elasticsearch، Kibana به‌صورت خودکار بالا می‌آید
+
+---
+
+### ۱۰.۲ کانفیگ Logstash (`pipeline/logstash.conf`)
+
+```conf
+input {
+  udp {
+    port => 5140
+    type => "syslog"
+    codec => plain
+    ecs_compatibility => disabled
+  }
+  tcp {
+    port => 5140
+    type => "syslog"
+    codec => plain
+    ecs_compatibility => disabled
+  }
+}
+
+filter {
+  grok {
+    match => {
+      "message" => "<%{NUMBER:syslog_pri}> %{TIMESTAMP_ISO8601:syslog_timestamp} %{HOSTNAME:syslog_host} %{WORD:syslog_program}(?:\[%{NUMBER:syslog_pid}\])?: %{GREEDYDATA:syslog_message}"
+    }
+    ecs_compatibility => disabled
+  }
+
+  json {
+    source => "syslog_message"
+    target => "log"
+    skip_on_invalid_json => true
+  }
+
+  ruby {
+    code => "
+      log = event.get('log')
+      if log.is_a?(Hash)
+        log.each { |k, v| event.set(k, v) }
+      end
+      event.remove('log')
+    "
+  }
+
+  date {
+    match => ["iso_timestamp", "ISO8601"]
+    target => "@timestamp"
+  }
+
+  mutate {
+    remove_field => [
+      "message", "syslog_message", "syslog_timestamp",
+      "iso_timestamp", "timestamp", "host", "@version"
+    ]
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["http://elasticsearch:9200"]
+    user => "elastic"
+    password => "Kimi@123"
+    ecs_compatibility => disabled
+    index => "cdn-logs-%{+YYYY.MM.dd}"
+    ilm_enabled => false
+    manage_template => false
+  }
+
+  stdout {
+    codec => rubydebug
+  }
+}
+```
+
+**توضیح کانفیگ:**
+
+* **input:** دریافت لاگ از UDP و TCP پورت 5140
+
+* **filter:**
+
+  * `grok`: ساختار اولیه لاگ را استخراج می‌کند
+  * `json`: تبدیل پیام‌های JSON به فیلدهای مجزا
+  * `ruby`: باز کردن nested JSON
+  * `date`: زمان لاگ را به `@timestamp` استاندارد تبدیل می‌کند
+  * `mutate`: حذف فیلدهای اضافی
+
+* **output:**
+
+  * ارسال داده‌ها به Elasticsearch با نام ایندکس روزانه `cdn-logs-YYYY.MM.DD`
+  * نمایش لاگ‌ها در کنسول با `stdout`
+
+---
+
+### ۱۰.۳ بکاپ‌گیری از Elasticsearch
+
+اسکریپت زیر لاگ‌ها را از ایندکس Elasticsearch دریافت و به S3 آپلود می‌کند:
+
+```bash
+#!/bin/bash
+
+ES_HOST="http://188.121.107.139:9200"
+ES_USER="elastic"
+ES_PASS="Kimi%40123"
+
+INDEXES=("cdn-logs-2026.02.24")
+OUTPUT_FILE="elastic_data.json"
+S3_BUCKET="kimi-ch"
+
+if [ ! -f "$OUTPUT_FILE" ]; then
+    echo "Creating new output file."
+    echo "[]" > "$OUTPUT_FILE"
+fi
+
+ALL_DATA="[]"
+
+for index in "${INDEXES[@]}"; do
+    echo "Fetching data from $index..."
+
+    DUMP_FILE=$(mktemp)
+    rm -f "$DUMP_FILE"
+
+    elasticdump \
+        --input="http://${ES_USER}:${ES_PASS}@188.121.107.139:9200/${index}" \
+        --output="$DUMP_FILE" \
+        --type=data \
+        --quiet
+
+    if [ -f "$DUMP_FILE" ]; then
+        INDEX_DATA=$(jq -c '._source' "$DUMP_FILE" | jq -s 'sort_by(."@timestamp")')
+        ALL_DATA=$(echo "$ALL_DATA $INDEX_DATA" | jq -s 'add | unique_by(."@timestamp")')
+        rm -f "$DUMP_FILE"
+    else
+        echo "No data returned for $index"
+    fi
+done
+
+if [ "$ALL_DATA" != "$(cat "$OUTPUT_FILE")" ]; then
+    echo "New data found. Updating file."
+    echo "$ALL_DATA" > "$OUTPUT_FILE"
+
+    echo "Uploading to S3..."
+    rclone copy "$OUTPUT_FILE" s3:${S3_BUCKET}/ --progress
+    echo "Upload complete."
+else
+    echo "No new data. All received data are duplicates."
+fi
+```
+
+**توضیح بکاپ:**
+
+* اتصال به Elasticsearch با کاربر `elastic`
+* استخراج داده‌های ایندکس مشخص شده با `elasticdump`
+* حذف داده‌های تکراری با `jq`
+* ذخیره در فایل `elastic_data.json`
+* آپلود به S3 با `rclone`
