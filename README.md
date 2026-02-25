@@ -405,7 +405,7 @@ volumeMounts:
 این تنظیمات تضمین می‌کنند که فقط سرویس‌ها و منابع مشخص، بتوانند به سرورها و کانتینرها دسترسی داشته باشند و حملات احتمالی محدود شوند.
 
 
-## ۸. داکرایز کردن پروژه Next.js
+## ۷. داکرایز کردن پروژه Next.js
 
 ### Docker چیست؟
 
@@ -549,7 +549,7 @@ docker push registry-8595781cfa-astroadre.apps.ir-central1.arvancaas.ir/kimblog:
 * **Logstash:** پردازش و تبدیل لاگ‌ها
 * **Kibana:** داشبورد و ویژوالیزیشن داده‌ها
 
-### ۱۰.۱ فایل `docker-compose.yml`
+### ۸.۱ فایل `docker-compose.yml`
 
 ```yaml
 version: '3'
@@ -645,7 +645,7 @@ networks:
 
 ---
 
-### ۱۰.۲ کانفیگ Logstash (`pipeline/logstash.conf`)
+### ۸.۲ کانفیگ Logstash (`pipeline/logstash.conf`)
 
 ```conf
 input {
@@ -736,7 +736,7 @@ output {
 
 ---
 
-### ۱۰.۳ بکاپ‌گیری از Elasticsearch
+### ۸.۳ بکاپ‌گیری از Elasticsearch
 
 اسکریپت زیر لاگ‌ها را از ایندکس Elasticsearch دریافت و به S3 آپلود می‌کند:
 
